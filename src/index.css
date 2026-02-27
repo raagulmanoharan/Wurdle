@@ -1,0 +1,26 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Text:ital@0;1&family=Didact+Gothic&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-serif: "DM Serif Text", serif;
+  --font-sans: "Didact Gothic", sans-serif;
+  
+  --color-brand-yellow: #F6C927;
+  --color-brand-black: #000000;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #f5f5f5;
+  color: var(--color-brand-black);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Hide all scrollbars globally */
+*::-webkit-scrollbar {
+  display: none;
+}
+* {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
