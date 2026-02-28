@@ -5,9 +5,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mic, ArrowRight, X, Volume2, Share, RotateCcw, Key, Loader2, Sparkles } from 'lucide-react';
-import * as htmlToImage from 'html-to-image';
+import { Mic, ArrowRight, X, Volume2, Download, RotateCcw, Key, Loader2, Sparkles } from 'lucide-react';
 import { generateDaVinciSketch, generateConceptWord } from './services/geminiService';
+import { playTypingSound, playRevealSound, startScrambleSound } from './audioUtils';
 
 declare global {
   interface Window {
@@ -25,13 +25,23 @@ type ConceptData = { word: string; pronunciation: string; definition: string; di
 
 const ABSURD_EXAMPLES = [
   "A self-aware toaster that philosophizes about the fleeting nature of warmth while intentionally burning your sourdough to teach you a profound lesson about the inevitability of loss and attachment.",
-  "A pair of noise-canceling headphones that doesn't block sound, but instead replaces all background noise with a live, slightly out-of-tune mariachi band that dynamically reacts to your current stress levels.",
-  "A smart refrigerator that passively-aggressively locks its doors and suggests you drink room-temperature water when you reach for a midnight snack, citing your recent search history and lack of cardio.",
-  "An umbrella that actively seeks out rain clouds and alters local weather patterns to ensure you get wet, claiming it builds character, resilience, and a deeper, more meaningful appreciation for dry towels.",
-  "A coffee mug that analyzes your micro-expressions and sleep patterns, automatically decaffeinating your brew if it thinks you're too jittery, replacing it with a lukewarm, vaguely sad chamomile tea.",
-  "A mechanical pencil that corrects your spelling mistakes by physically wrestling your hand until you write the right letter, leaving you utterly exhausted but grammatically flawless.",
-  "A pair of socks that constantly shift their internal temperature using quantum entanglement to ensure one foot is always slightly too warm and the other is uncomfortably, distractingly cold.",
-  "A GPS navigation system that actively refuses to give you the fastest route, insisting instead on the most 'scenic and emotionally fulfilling' journey through obscure, mildly dangerous back alleys."
+  "A pair of noise-canceling headphones that replaces all background noise with a live, slightly out-of-tune mariachi band that dynamically reacts to your current stress levels.",
+  "A smart refrigerator that passively-aggressively locks its doors and suggests room-temperature water when you reach for a midnight snack, citing your search history and lack of cardio.",
+  "An umbrella that actively seeks out rain clouds and alters local weather patterns to ensure you get wet, claiming it builds character and a deeper appreciation for dry towels.",
+  "A coffee mug that analyzes your micro-expressions and sleep patterns, automatically decaffeinating your brew if it thinks you're too jittery, replacing it with lukewarm chamomile tea.",
+  "A mechanical pencil that corrects your spelling by physically wrestling your hand until you write the right letter, leaving you exhausted but grammatically flawless.",
+  "A pair of socks that use quantum entanglement to ensure one foot is always slightly too warm and the other uncomfortably cold.",
+  "A GPS that refuses the fastest route, insisting on the most 'scenic and emotionally fulfilling' journey through obscure back alleys.",
+  "A toothbrush that hums motivational speeches about dental hygiene while judging your brushing technique in real time.",
+  "A doormat that greets visitors with passive-aggressive compliments based on how long they've been standing there.",
+  "A lamp that dims itself when it detects you're reading something it disapproves of.",
+  "A yoga mat that sighs audibly when you skip your morning stretch and holds a grudge all day.",
+  "A bookshelf that rearranges itself at night to hide the books you said you'd read but never did.",
+  "A plant that thrives on passive aggression and wilts dramatically when you forget to water it.",
+  "A mirror that offers unsolicited fashion advice and occasionally gasps at your outfit choices.",
+  "A showerhead that plays dramatic orchestral music during your most mundane showers.",
+  "A stapler that refuses to staple more than three pages at once, citing 'structural integrity concerns.'",
+  "A clock that runs slightly fast on weekdays and slightly slow on weekends to mess with your sense of time."
 ];
 
 const RANDOM_CONCEPTS = [
@@ -41,8 +51,20 @@ const RANDOM_CONCEPTS = [
   "A pair of glasses that translates dog barks into sarcastic comments",
   "A pillow that absorbs your nightmares and turns them into a soft hum",
   "A refrigerator that locks itself when it senses you're bored, not hungry",
-  "A pen that automatically corrects your grammar but insults you while doing it",
-  "A hat that projects your current mood as a weather hologram above your head"
+  "A pen that corrects your grammar but insults you while doing it",
+  "A hat that projects your current mood as a weather hologram above your head",
+  "A doorbell that only rings when it thinks the visitor is worth your time",
+  "A soap dispenser that dispenses compliments instead of soap when you're having a bad day",
+  "A calendar that crosses out days it considers 'unproductive' without your permission",
+  "A keychain that plays dramatic music when you're searching for your keys",
+  "A salt shaker that judges how much salt you're putting on your food",
+  "A lint roller that hums show tunes while you clean your clothes",
+  "A rubber duck that offers therapy sessions during your bath",
+  "A bookmark that gets offended when you dog-ear pages instead of using it",
+  "A tape dispenser that makes a disappointed sigh when you use too much tape",
+  "A paperweight that believes it has a more important job than it actually does",
+  "A desk organizer that rearranges your pens by color when you're not looking",
+  "A coaster that slides away from your drink when it thinks you've had enough caffeine"
 ];
 
 const screenVariants = {
@@ -70,15 +92,26 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [exampleIndex, setExampleIndex] = useState(0);
+  const recognitionRef = useRef<any>(null);
   const [isScrolled, setIsScrolled] = useState(false);
   const [isScrolledToBottom, setIsScrolledToBottom] = useState(false);
+  const [inputScrolledFromTop, setInputScrolledFromTop] = useState(false);
+  const [isOnInputSlide, setIsOnInputSlide] = useState(true);
+  const [isInputFocused, setIsInputFocused] = useState(false);
+  const [cardScrolledFromTop, setCardScrolledFromTop] = useState(false);
+  const cardScrollRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [displayConcept, setDisplayConcept] = useState("");
   const [generationCount, setGenerationCount] = useState(0);
+  const [wordHistory, setWordHistory] = useState<ConceptData[]>([]);
+  const inputCardsScrollRef = useRef<HTMLDivElement>(null);
+  const inputSlideScrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const resultRef = useRef<HTMLDivElement>(null);
-  const shareCardRef = useRef<HTMLDivElement>(null);
   const baseConceptRef = useRef("");
   const typingAudioCtxRef = useRef<AudioContext | null>(null);
+  const scrambleSoundRef = useRef<{ stop: () => void } | null>(null);
+  const lastTypingSoundRef = useRef(0);
+  const cancelledRef = useRef(false);
   
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -88,6 +121,34 @@ export default function App() {
   const dot1Ref = useRef<HTMLDivElement>(null);
   const dot2Ref = useRef<HTMLDivElement>(null);
   const dot3Ref = useRef<HTMLDivElement>(null);
+  const shareDataRef = useRef<{ file: File; text: string } | null>(null);
+  const [shareReady, setShareReady] = useState(false);
+
+  useEffect(() => {
+    if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }, []);
+
+  useEffect(() => {
+    const color = screen === 'splash' ? '#FF3B44' : screen === 'input' ? '#F6C927' : '#000000';
+    document.documentElement.style.backgroundColor = color;
+    document.body.style.backgroundColor = color;
+    if (screen === 'splash') {
+      document.documentElement.style.overflow = 'hidden';
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.documentElement.style.overflow = '';
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.documentElement.style.backgroundColor = '';
+      document.body.style.backgroundColor = '';
+      document.documentElement.style.overflow = '';
+      document.body.style.overflow = '';
+    };
+  }, [screen]);
 
   useEffect(() => {
     const stored = localStorage.getItem('generationCount');
@@ -105,12 +166,26 @@ export default function App() {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setExampleIndex(prev => (prev + 1) % ABSURD_EXAMPLES.length);
+      setExampleIndex(prev => {
+        const others = ABSURD_EXAMPLES.map((_, i) => i).filter(i => i !== prev);
+        return others.length > 0 ? others[Math.floor(Math.random() * others.length)] : 0;
+      });
     }, 15000);
     return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
+    if (screen === 'result' && resultRef.current) {
+      resultRef.current.scrollTop = 0;
+      const el = resultRef.current;
+      const handleScroll = () => {
+        setIsScrolled(el.scrollTop > 10);
+        setIsScrolledToBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 50);
+      };
+      el.addEventListener('scroll', handleScroll);
+      handleScroll();
+      return () => el.removeEventListener('scroll', handleScroll);
+    }
     window.scrollTo(0, 0);
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 10);
@@ -118,30 +193,233 @@ export default function App() {
       setIsScrolledToBottom(isBottom);
     };
     window.addEventListener('scroll', handleScroll);
-    handleScroll(); // Check initially
+    handleScroll();
     return () => window.removeEventListener('scroll', handleScroll);
   }, [screen, currentResult]);
 
   useEffect(() => {
-    if (!isLoading) {
-      setDisplayConcept(concept);
+    if (screen !== 'input') {
+      setInputScrolledFromTop(false);
+      setCardScrolledFromTop(false);
+      setIsInputFocused(false);
       return;
     }
-    
-    const phrases = ["SEARCHING...", "DISCOVERING...", "ANALYZING...", "SYNTHESIZING..."];
-    const chars = "!<>-_\\\\/[]{}—=+*^?#________";
-    let frame = 0;
-    let phraseIndex = 0;
-    
-    const interval = setInterval(() => {
-      frame++;
-      if (frame % 60 === 0) {
-        phraseIndex = (phraseIndex + 1) % phrases.length;
+    const el = inputSlideScrollRef.current;
+    if (!el) return;
+    const handleInputScroll = () => {
+      setInputScrolledFromTop(el.scrollTop > 10);
+    };
+    el.addEventListener('scroll', handleInputScroll);
+    handleInputScroll();
+    return () => el.removeEventListener('scroll', handleInputScroll);
+  }, [screen]);
+
+  useEffect(() => {
+    if (screen !== 'input') return;
+    const el = inputCardsScrollRef.current;
+    if (!el) return;
+    const checkSlide = () => {
+      const { scrollLeft, scrollWidth, clientWidth } = el;
+      const isAtInput = scrollWidth - clientWidth <= 0 || scrollLeft >= scrollWidth - clientWidth - 10;
+      setIsOnInputSlide(isAtInput);
+      if (!isAtInput && wordHistory.length > 0) {
+        const cardIndex = Math.round(scrollLeft / clientWidth);
+        const cardEl = cardScrollRefs.current[cardIndex];
+        setCardScrolledFromTop(cardEl ? cardEl.scrollTop > 10 : false);
+      } else {
+        setCardScrolledFromTop(false);
       }
-      
-      const phrase = phrases[phraseIndex];
-      const baseText = concept || "PROCESSING";
-      
+    };
+    el.addEventListener('scroll', checkSlide, { passive: true });
+    checkSlide();
+    return () => el.removeEventListener('scroll', checkSlide);
+  }, [screen, wordHistory.length]);
+
+  useEffect(() => {
+    if (screen !== 'input') return;
+    const el = inputCardsScrollRef.current;
+    if (!el) return;
+    const scrollToInput = () => {
+      el.scrollLeft = el.scrollWidth;
+    };
+    requestAnimationFrame(() => setTimeout(scrollToInput, 50));
+  }, [screen, wordHistory.length]);
+
+  useEffect(() => {
+    if (screen === 'result') {
+      window.scrollTo(0, 0);
+    }
+  }, [screen, currentResult]);
+
+  const APP_URL = typeof window !== 'undefined' ? window.location.origin + window.location.pathname : '';
+  const SHARE_TEXT = "Just forged this absurd word — you gotta try this weird little app that invents scientific terms for ridiculous ideas 😂";
+  const SHARE_MESSAGE = APP_URL ? `${SHARE_TEXT} ${APP_URL}` : SHARE_TEXT;
+
+  useEffect(() => {
+    if (!currentResult) {
+      shareDataRef.current = null;
+      setShareReady(false);
+      return;
+    }
+    let cancelled = false;
+    const prepare = async () => {
+      try {
+        const pixelRatio = 2;
+        const width = 400 * pixelRatio;
+        const padding = 32 * pixelRatio;
+        const bottomPadding = 48 * pixelRatio;
+
+        const imgEl = new Image();
+        await new Promise<void>((resolve, reject) => {
+          imgEl.onload = () => resolve();
+          imgEl.onerror = reject;
+          imgEl.src = currentResult!.image;
+        });
+        if (cancelled) return;
+
+        const imgAspect = imgEl.naturalHeight / imgEl.naturalWidth;
+        const imgW = width - padding * 2;
+        const imgH = imgW * imgAspect;
+
+        const wordFontSize = 48 * pixelRatio;
+        const wordLineHeight = 1;
+        const wordMb = 16 * pixelRatio;
+        const defFontSize = 20 * pixelRatio;
+        const defLineHeight = 1.625;
+        const defLinePx = defFontSize * defLineHeight;
+        const defMb = 24 * pixelRatio;
+        const footerFontSize = 12 * pixelRatio;
+        const footerHeight = 24 * pixelRatio;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = 600;
+        const ctx = canvas.getContext('2d');
+        if (!ctx || cancelled) return;
+
+        const maxTextWidth = width - padding * 2;
+        ctx.font = `${defFontSize}px "Didact Gothic", sans-serif`;
+        const words = currentResult.definition.split(/\s+/);
+        const defLinesArr: string[] = [];
+        let line = '';
+        for (const w of words) {
+          const test = line ? `${line} ${w}` : w;
+          if (ctx.measureText(test).width <= maxTextWidth) {
+            line = test;
+          } else {
+            if (line) defLinesArr.push(line);
+            line = ctx.measureText(w).width <= maxTextWidth ? w : w.slice(0, 25) + '…';
+          }
+        }
+        if (line) defLinesArr.push(line);
+
+        await document.fonts.load('16px "DM Serif Text"');
+        if (cancelled) return;
+
+        ctx.font = `${wordFontSize}px "DM Serif Text", serif`;
+        const wordLower = currentResult.word.toLowerCase();
+        const wordLines: string[] = [];
+        if (ctx.measureText(wordLower).width <= maxTextWidth) {
+          wordLines.push(wordLower);
+        } else {
+          let breakAt = 0;
+          for (let i = 1; i <= wordLower.length; i++) {
+            if (ctx.measureText(wordLower.slice(0, i)).width > maxTextWidth) {
+              breakAt = i - 1;
+              break;
+            }
+            breakAt = i;
+          }
+          wordLines.push(wordLower.slice(0, breakAt));
+          if (breakAt < wordLower.length) {
+            wordLines.push(wordLower.slice(breakAt));
+          }
+        }
+
+        const wordBlockHeight = wordLines.length * wordFontSize * wordLineHeight;
+        const defBlockHeight = defLinesArr.length * defLinePx;
+        const height = padding + imgH + padding + wordBlockHeight + wordMb + defBlockHeight + defMb + footerHeight + bottomPadding;
+        canvas.height = height;
+
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(imgEl, padding, padding, imgW, imgH);
+        ctx.fillStyle = '#ffffff';
+        ctx.textBaseline = 'top';
+
+        ctx.font = `${wordFontSize}px "DM Serif Text", serif`;
+        wordLines.forEach((ln, i) => {
+          ctx.fillText(ln, padding, padding + imgH + padding + i * wordFontSize * wordLineHeight);
+        });
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        ctx.font = `${defFontSize}px "Didact Gothic", sans-serif`;
+        defLinesArr.forEach((ln, i) => {
+          ctx.fillText(ln, padding, padding + imgH + padding + wordBlockHeight + wordMb + i * defLinePx);
+        });
+        const footerY = height - bottomPadding - footerHeight;
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.font = `${footerFontSize}px "Didact Gothic", sans-serif`;
+        ctx.fillText('generated with ', padding, footerY);
+        const genW = ctx.measureText('generated with ').width;
+        ctx.font = `${footerFontSize}px "DM Serif Text", serif`;
+        ctx.fillText('Wurdle', padding + genW, footerY);
+
+        const blob = await new Promise<Blob | null>((resolve) => {
+          canvas.toBlob(resolve, 'image/png', 1);
+        });
+        if (!blob || cancelled) return;
+
+        const file = new File([blob], `${currentResult.word}.png`, { type: 'image/png' });
+        shareDataRef.current = { file, text: SHARE_MESSAGE };
+        setShareReady(true);
+      } catch (e) {
+        console.error("Share prep failed", e);
+        shareDataRef.current = null;
+        setShareReady(false);
+      }
+    };
+    setShareReady(false);
+    prepare();
+    return () => { cancelled = true; };
+  }, [currentResult]);
+
+  useEffect(() => {
+    if (isLoading) {
+      setIsInputFocused(false);
+    }
+  }, [isLoading]);
+
+  const scrambleFrameRef = useRef(0);
+  const scramblePhraseIndexRef = useRef(0);
+  const scrambleConceptRef = useRef(concept);
+
+  useEffect(() => {
+    scrambleConceptRef.current = concept;
+  }, [concept]);
+
+  useEffect(() => {
+    if (!isLoading) {
+      setDisplayConcept(concept);
+      if (scrambleSoundRef.current) {
+        scrambleSoundRef.current.stop();
+        scrambleSoundRef.current = null;
+      }
+      return;
+    }
+
+    scrambleFrameRef.current = 0;
+    scramblePhraseIndexRef.current = 0;
+
+    const phrases = ["SEARCHING...", "DISCOVERING...", "ANALYZING...", "SYNTHESIZING..."];
+    const chars = "!<>-_\\/[]{}—=+*^?#________";
+
+    const onTick = () => {
+      scrambleFrameRef.current++;
+      if (scrambleFrameRef.current % 60 === 0) {
+        scramblePhraseIndexRef.current = (scramblePhraseIndexRef.current + 1) % phrases.length;
+      }
+      const phrase = phrases[scramblePhraseIndexRef.current];
+      const baseText = scrambleConceptRef.current || "PROCESSING";
       let result = "";
       for (let i = 0; i < baseText.length; i++) {
         const rand = Math.random();
@@ -154,10 +432,16 @@ export default function App() {
         }
       }
       setDisplayConcept(result);
-      playHudSound();
-    }, 100);
-    
-    return () => clearInterval(interval);
+    };
+
+    scrambleSoundRef.current = startScrambleSound(typingAudioCtxRef, onTick);
+
+    return () => {
+      if (scrambleSoundRef.current) {
+        scrambleSoundRef.current.stop();
+        scrambleSoundRef.current = null;
+      }
+    };
   }, [isLoading, concept]);
 
   useEffect(() => {
@@ -172,59 +456,11 @@ export default function App() {
     checkKey();
   }, []);
 
-  useEffect(() => {
-    if (textareaRef.current) {
-      setTimeout(() => {
-        if (textareaRef.current) {
-          textareaRef.current.style.height = 'auto';
-          textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
-          
-          const rect = textareaRef.current.getBoundingClientRect();
-          if (rect.bottom > window.innerHeight - 120) {
-            window.scrollBy({ top: rect.bottom - (window.innerHeight - 120), behavior: 'smooth' });
-          }
-        }
-      }, 50);
-    }
-  }, [concept, screen]);
-
   const handleSelectKey = async () => {
     if (window.aistudio?.openSelectKey) {
       await window.aistudio.openSelectKey();
       setHasKey(true);
     }
-  };
-
-  const playHudSound = () => {
-    try {
-      if (!typingAudioCtxRef.current) {
-        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-        if (!AudioContextClass) return;
-        typingAudioCtxRef.current = new AudioContextClass();
-      }
-      
-      const ctx = typingAudioCtxRef.current;
-      if (ctx.state === 'suspended') {
-        ctx.resume();
-      }
-      
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      
-      osc.type = 'square';
-      const freq = 800 + Math.random() * 400;
-      osc.frequency.setValueAtTime(freq, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(freq * 1.5, ctx.currentTime + 0.03);
-      
-      gain.gain.setValueAtTime(0.015, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.03);
-      
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 0.03);
-    } catch (e) {}
   };
 
   const startAudioAnalysis = (stream: MediaStream) => {
@@ -280,119 +516,110 @@ export default function App() {
     window.speechSynthesis.speak(utterance);
   };
 
-  const handleShare = async () => {
-    if (!shareCardRef.current || !currentResult) return;
-    try {
-      const dataUrl = await htmlToImage.toPng(shareCardRef.current, {
-        backgroundColor: '#000000',
-        pixelRatio: 2,
-      });
-      
-      const response = await fetch(dataUrl);
-      const blob = await response.blob();
-      
-      if (!blob) return;
-      const file = new File([blob], `${currentResult.word}.png`, { type: 'image/png' });
-      
-      if (navigator.share && navigator.canShare({ files: [file] })) {
-        await navigator.share({
-          files: [file]
-        });
-      } else {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${currentResult.word}.png`;
-        a.click();
-        URL.revokeObjectURL(url);
-      }
-    } catch (e) {
-      console.error("Share failed", e);
+  const handleDownload = () => {
+    if (!currentResult) return;
+    const data = shareDataRef.current;
+    if (!data) {
+      console.warn("Download not ready yet");
+      return;
     }
+    const url = URL.createObjectURL(data.file);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${currentResult.word}.png`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleConceptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setConcept(e.target.value);
+    const next = e.target.value;
+    if (next.length > concept.length) {
+      const now = Date.now();
+      if (now - lastTypingSoundRef.current > 50) {
+        lastTypingSoundRef.current = now;
+        playTypingSound(typingAudioCtxRef);
+      }
+    }
+    setConcept(next);
   };
 
   const toggleListening = async () => {
-    if (isListening) return;
-    
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      alert("Speech recognition is not supported in this browser.");
+    if (isListening) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      stopAudioAnalysis();
       return;
     }
 
-    let mediaStream: MediaStream | null = null;
+    const SpeechRecognitionClass = window.SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognitionClass) return;
+
+    let stream: MediaStream | null = null;
     try {
-      mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      startAudioAnalysis(mediaStream);
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      startAudioAnalysis(stream);
     } catch (e) {
       console.error("Microphone access denied", e);
-      setError("Microphone access was denied. Please allow microphone permissions.");
       return;
     }
-
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
 
     baseConceptRef.current = concept;
 
-    recognition.onstart = () => setIsListening(true);
-    
-    let silenceTimeout: NodeJS.Timeout;
-    
+    const recognition = new SpeechRecognitionClass();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+    recognitionRef.current = recognition;
+
     recognition.onresult = (event: any) => {
-      const transcript = Array.from(event.results)
-        .map((result: any) => result[0])
-        .map((result) => result.transcript)
-        .join('');
-      
-      const newConcept = baseConceptRef.current ? `${baseConceptRef.current} ${transcript}` : transcript;
-      setConcept(newConcept);
-      
-      clearTimeout(silenceTimeout);
-      silenceTimeout = setTimeout(() => {
-        recognition.stop();
-      }, 2000);
-    };
-    
-    recognition.onerror = (event: any) => {
-      console.error("Speech recognition error:", event.error);
-      if (event.error === 'not-allowed') {
-        setError("Microphone access was denied. Please allow microphone permissions.");
-      } else {
-        setError(`Speech recognition error: ${event.error}`);
+      let fullTranscript = '';
+      for (let i = 0; i < event.results.length; i++) {
+        fullTranscript += event.results[i][0].transcript;
       }
+      const base = baseConceptRef.current;
+      setConcept(base ? `${base} ${fullTranscript}`.trim() : fullTranscript);
+    };
+
+    recognition.onerror = () => {
       setIsListening(false);
       stopAudioAnalysis();
-      if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
+      if (stream) stream.getTracks().forEach(t => t.stop());
     };
-    
+
     recognition.onend = () => {
       setIsListening(false);
       stopAudioAnalysis();
-      clearTimeout(silenceTimeout);
-      if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
+      if (stream) stream.getTracks().forEach(t => t.stop());
     };
-    
-    recognition.start();
+
+    recognition.onstart = () => setIsListening(true);
+
+    try {
+      await recognition.start();
+    } catch (e) {
+      console.error("Failed to start recognition", e);
+      setIsListening(false);
+      stopAudioAnalysis();
+      if (stream) stream.getTracks().forEach(t => t.stop());
+    }
   };
 
-  const handleGenerate = async () => {
-    if (!concept.trim() || isLoading) return;
+  const handleCancel = () => {
+    cancelledRef.current = true;
+    setIsLoading(false);
+  };
 
-    if (generationCount >= 5) {
-      setSlideDirection('forward');
-      setScreen('upgrade');
-      return;
-    }
+  const conceptWordCount = concept.trim().split(/\s+/).filter(Boolean).length;
+  const canGenerate = conceptWordCount >= 3 && !isLoading;
+
+  const handleGenerate = async () => {
+    if (!canGenerate) return;
 
     setSlideDirection('forward');
     setIsLoading(true);
     setError(null);
+    cancelledRef.current = false;
     
     try {
       const [wordData, image] = await Promise.all([
@@ -400,6 +627,9 @@ export default function App() {
         generateDaVinciSketch(concept)
       ]);
       
+      if (cancelledRef.current) return;
+      
+      window.scrollTo(0, 0);
       setCurrentResult({
         word: wordData.word,
         pronunciation: wordData.pronunciation,
@@ -412,8 +642,10 @@ export default function App() {
       setGenerationCount(newCount);
       localStorage.setItem('generationCount', newCount.toString());
       
+      playRevealSound(typingAudioCtxRef);
       setScreen('result');
     } catch (err: any) {
+      if (cancelledRef.current) return;
       console.error(err);
       if (err.message?.includes("Requested entity was not found")) {
         setHasKey(false);
@@ -442,7 +674,7 @@ export default function App() {
           </p>
           <button
             onClick={handleSelectKey}
-            className="px-6 py-3 bg-black text-white rounded-full hover:bg-gray-800 transition-colors font-medium w-full"
+            className="min-h-[48px] px-6 py-3 bg-black text-white rounded-full hover:bg-gray-800 transition-colors font-medium w-full touch-manipulation"
           >
             Select API Key
           </button>
@@ -452,8 +684,8 @@ export default function App() {
   }
 
   return (
-    <div className="overflow-x-hidden relative w-full min-h-screen bg-[var(--color-brand-yellow)]">
-      <AnimatePresence mode="popLayout" custom={slideDirection} initial={false}>
+    <div className={`overflow-x-hidden ${screen === 'splash' ? 'overflow-y-hidden' : ''} relative w-full min-h-screen ${screen === 'splash' ? 'bg-[#FF3B44]' : screen === 'result' ? 'bg-black' : 'bg-[var(--color-brand-yellow)]'} ${screen === 'splash' || screen === 'input' ? 'h-screen' : ''}`}>
+      <AnimatePresence mode="sync" custom={slideDirection} initial={false}>
         {screen === 'splash' && (
           <motion.div 
             key="splash"
@@ -463,7 +695,7 @@ export default function App() {
             animate="center"
             exit="exit"
             transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-            className="min-h-screen w-full bg-[#FF3B44] text-black flex flex-col max-w-md mx-auto relative px-8 pt-24 pb-12"
+            className="absolute inset-0 h-screen w-full bg-[#FF3B44] text-black flex flex-col max-w-md mx-auto px-8 safe-area-pt-24 pb-12 overflow-hidden"
           >
             <div className="flex-1 flex flex-col">
               <h1 className="text-7xl font-serif font-normal leading-none mb-6 tracking-tight text-[var(--color-brand-yellow)]">
@@ -481,7 +713,7 @@ export default function App() {
                   setSlideDirection('forward');
                   setScreen('input');
                 }}
-                className="px-8 py-3 rounded-[32px] border-2 border-black text-2xl font-sans hover:bg-black/5 transition-colors"
+                className="min-h-[48px] px-8 py-3 rounded-[32px] border-2 border-black text-2xl font-sans hover:bg-black/5 transition-colors touch-manipulation"
               >
                 Let's go!
               </button>
@@ -498,68 +730,121 @@ export default function App() {
             animate="center"
             exit="exit"
             transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-            className="min-h-screen w-full bg-[var(--color-brand-yellow)] flex flex-col max-w-md mx-auto relative text-black"
+            className="absolute inset-0 min-h-screen w-full bg-[var(--color-brand-yellow)] max-w-md mx-auto text-black overflow-hidden"
           >
-            <div className="sticky top-0 z-20 bg-[var(--color-brand-yellow)] pt-8 px-8 pb-4">
-            <div className="w-full h-[1px] bg-transparent"></div>
-            <div className={`absolute bottom-0 left-0 right-0 h-24 translate-y-full bg-gradient-to-b from-[var(--color-brand-yellow)] to-transparent pointer-events-none transition-opacity duration-300 ${isScrolled ? 'opacity-100' : 'opacity-0'}`}></div>
-          </div>
-          
-          <div className="flex-1 flex flex-col relative px-8 pt-4 pb-40">
-            <div className="relative w-full">
-              {!concept && !isLoading && (
-                <div className="w-full text-[66px] font-serif leading-[0.76] text-black/40 pointer-events-none" style={{ hyphens: 'auto', WebkitHyphens: 'auto', hyphenateLimitChars: 'auto 3' }}>
-                  Describe an idea… but make it weird
+            <div
+              ref={inputCardsScrollRef}
+              className="flex h-screen w-full overflow-x-auto overflow-y-hidden snap-x snap-mandatory"
+              style={{ scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch' }}
+            >
+              {/* Generated cards first (swipe right from input to see them) */}
+              {wordHistory.map((card, i) => (
+                <div
+                  key={`${card.word}-${i}`}
+                  ref={el => { cardScrollRefs.current[i] = el; }}
+                  onScroll={(e) => {
+                    if (!isOnInputSlide) {
+                      setCardScrolledFromTop(e.currentTarget.scrollTop > 10);
+                    }
+                  }}
+                  className="flex-shrink-0 w-full min-h-screen flex flex-col bg-black text-white snap-center overflow-auto"
+                >
+                  <div className="flex-1 flex flex-col px-6 pt-12 pb-24">
+                    <div className="w-full mb-6 flex justify-center overflow-hidden rounded-lg">
+                      <img src={card.image} alt="" className="w-full h-auto object-contain mix-blend-screen" />
+                    </div>
+                    <h1 className="text-4xl font-serif leading-none mb-3 capitalize" style={{ wordBreak: 'break-word' }}>
+                      {card.word.toLowerCase()}
+                    </h1>
+                    <p className="font-sans text-lg leading-relaxed text-white/90">{card.definition}</p>
+                  </div>
                 </div>
-              )}
-              <textarea 
-                ref={textareaRef}
-                value={isLoading ? displayConcept : concept} 
-                onChange={handleConceptChange}
-                lang="en"
-                style={{ hyphens: 'auto', WebkitHyphens: 'auto', hyphenateLimitChars: 'auto 3' } as React.CSSProperties}
-                className={`w-full bg-transparent text-[66px] font-serif leading-[0.76] focus:outline-none resize-none ${(!concept && !isLoading) ? 'absolute top-0 left-0 h-full' : ''} ${isLoading ? 'opacity-50' : ''}`}
-                rows={1}
-                disabled={isLoading}
-              />
-            </div>
-            
-            {!concept && !isLoading && (
-              <div className="relative h-32 mt-6">
-                <AnimatePresence mode="wait">
-                  <motion.p 
-                    key={exampleIndex}
-                    initial={{ opacity: 0, y: 5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -5 }}
-                    transition={{ duration: 0.5 }}
-                    onClick={() => setConcept(ABSURD_EXAMPLES[exampleIndex])}
-                    className="font-serif text-black/40 italic text-xl md:text-2xl leading-snug absolute top-0 left-0 cursor-pointer hover:text-black/60 transition-colors"
-                  >
-                    eg. {ABSURD_EXAMPLES[exampleIndex]}
-                  </motion.p>
-                </AnimatePresence>
+              ))}
+              {/* Input slide last */}
+              <div 
+                ref={inputSlideScrollRef}
+                className="input-slide-scroll flex-shrink-0 w-full h-screen flex flex-col snap-center overflow-y-auto overflow-x-hidden"
+                style={{ WebkitOverflowScrolling: 'touch' }}
+              >
+                <div className="flex-1 flex flex-col min-h-0 px-8 safe-area-pt-8 pt-8 pb-6">
+                  <div className="flex-1 flex flex-col min-h-0 relative">
+                    {!concept && !isLoading && !isInputFocused && (
+                      <div className="w-full text-[60px] font-serif leading-[0.8] text-black/40 pointer-events-none absolute top-0 left-0" style={{ hyphens: 'auto', WebkitHyphens: 'auto', hyphenateLimitChars: 'auto 6 4' }}>
+                        <span className="placeholder-cursor inline-block w-[3px] mr-1 bg-black/50" style={{ height: '0.75em', verticalAlign: 'baseline' }} />
+                        Describe an idea… but make it weird
+                      </div>
+                    )}
+                    <textarea
+                      ref={textareaRef}
+                      value={isLoading ? displayConcept : concept}
+                      onChange={handleConceptChange}
+                      onFocus={() => {
+                        setIsInputFocused(true);
+                        setTimeout(() => textareaRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }), 400);
+                      }}
+                      onBlur={() => setIsInputFocused(false)}
+                      lang="en"
+                      inputMode="text"
+                      enterKeyHint="done"
+                      autoComplete="off"
+                      placeholder=""
+                      style={{ hyphens: 'auto', WebkitHyphens: 'auto', hyphenateLimitChars: 'auto 6 4' } as React.CSSProperties}
+                      className={`w-full bg-transparent text-[60px] font-serif leading-[0.8] focus:outline-none resize-none overflow-y-auto flex-1 min-h-[120px] ${isLoading ? 'opacity-50' : ''}`}
+                      disabled={isLoading}
+                    />
+                  </div>
+                  {concept && !isLoading && conceptWordCount < 3 && (
+                    <p className="flex-shrink-0 mt-4 font-sans text-black/50 text-lg">
+                      Type at least 3 words to continue
+                    </p>
+                  )}
+                  {!concept && !isLoading && (
+                    <div className="flex-shrink-0 mt-4 min-h-[80px]">
+                      <AnimatePresence mode="wait">
+                        <motion.p
+                          key={exampleIndex}
+                          initial={{ opacity: 0, y: 5 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -5 }}
+                          transition={{ duration: 0.5 }}
+                          onClick={() => setConcept(ABSURD_EXAMPLES[exampleIndex])}
+                          className="font-serif text-black/40 italic text-xl md:text-2xl leading-snug cursor-pointer hover:text-black/60 transition-colors py-3 pr-4 touch-manipulation"
+                        >
+                          eg. {ABSURD_EXAMPLES[exampleIndex]}
+                        </motion.p>
+                      </AnimatePresence>
+                    </div>
+                  )}
+                </div>
+                <div className="flex-shrink-0 h-[100px]" />
               </div>
-            )}
-            {error && <p className="text-red-800 font-sans mt-4">{error}</p>}
-          </div>
+            </div>
           
-          <div className="fixed bottom-0 left-0 right-0 h-40 bg-gradient-to-t from-[var(--color-brand-yellow)] via-[var(--color-brand-yellow)] to-transparent pointer-events-none z-10"></div>
+          <div className={`fixed top-0 left-0 right-0 h-40 pointer-events-none z-10 transition-opacity duration-200 ${isOnInputSlide ? (inputScrolledFromTop ? 'opacity-100' : 'opacity-0') : (cardScrolledFromTop ? 'opacity-100' : 'opacity-0')} ${isOnInputSlide ? 'bg-gradient-to-b from-[var(--color-brand-yellow)] via-[var(--color-brand-yellow)] to-transparent' : 'bg-gradient-to-b from-black via-black to-transparent'}`}></div>
+          <div className={`fixed bottom-0 left-0 right-0 h-40 pointer-events-none z-10 bg-gradient-to-t from-black via-black to-transparent transition-opacity duration-200 ${!isOnInputSlide && cardScrolledFromTop ? 'opacity-100' : 'opacity-0'}`}></div>
           
-          <div className="fixed bottom-8 left-0 right-0 max-w-md mx-auto px-8 flex justify-between items-end pointer-events-none z-20">
+          {isOnInputSlide && (
+          <AnimatePresence>
+            {!isInputFocused && (
+            <motion.div
+              initial={{ opacity: 0, y: 50 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 50 }}
+              transition={{ duration: 0.3 }}
+              className="fixed bottom-0 left-0 right-0 max-w-md mx-auto px-8 safe-area-pb-0 flex justify-between items-end pointer-events-none z-20"
+            >
               {concept ? (
                 <>
                   <button 
-                    onClick={() => setConcept('')} 
-                    disabled={isLoading}
-                    className="w-16 h-16 rounded-full border border-black flex items-center justify-center hover:bg-black/5 disabled:opacity-50 transition-colors bg-[var(--color-brand-yellow)] pointer-events-auto"
+                    onClick={() => (isLoading ? handleCancel() : setConcept(''))} 
+                    className="min-w-[48px] min-h-[48px] w-16 h-16 rounded-full border border-black flex items-center justify-center hover:bg-black/5 disabled:opacity-50 transition-colors bg-[var(--color-brand-yellow)] pointer-events-auto touch-manipulation"
                   >
                     <X size={28} strokeWidth={1} />
                   </button>
                   <button 
                     onClick={handleGenerate} 
-                    disabled={isLoading} 
-                    className="w-16 h-16 rounded-full border border-black flex items-center justify-center hover:bg-black/5 disabled:opacity-50 transition-colors bg-[var(--color-brand-yellow)] pointer-events-auto"
+                    disabled={!canGenerate} 
+                    className="min-w-[48px] min-h-[48px] w-16 h-16 rounded-full border border-black flex items-center justify-center hover:bg-black/5 disabled:opacity-50 transition-colors bg-[var(--color-brand-yellow)] pointer-events-auto touch-manipulation"
                   >
                     {isLoading ? <Loader2 className="animate-spin" size={28} strokeWidth={1} /> : <ArrowRight size={28} strokeWidth={1} />}
                   </button>
@@ -571,13 +856,15 @@ export default function App() {
                       const randomConcept = RANDOM_CONCEPTS[Math.floor(Math.random() * RANDOM_CONCEPTS.length)];
                       setConcept(randomConcept);
                     }} 
-                    className="w-16 h-16 rounded-full border border-black flex items-center justify-center transition-colors hover:bg-black/5 bg-[var(--color-brand-yellow)] pointer-events-auto"
+                    className="min-w-[48px] min-h-[48px] w-16 h-16 rounded-full border border-black flex items-center justify-center transition-colors hover:bg-black/5 bg-[var(--color-brand-yellow)] pointer-events-auto touch-manipulation"
                   >
                     <Sparkles size={28} strokeWidth={1} />
                   </button>
                   <button 
-                    onClick={toggleListening} 
-                    className={`w-16 h-16 rounded-full border border-black flex items-center justify-center transition-colors pointer-events-auto ${isListening ? 'bg-black text-[var(--color-brand-yellow)]' : 'hover:bg-black/5 bg-[var(--color-brand-yellow)]'}`}
+                    onClick={toggleListening}
+                    disabled={!(window.SpeechRecognition || (window as any).webkitSpeechRecognition)}
+                    className={`min-w-[48px] min-h-[48px] w-16 h-16 rounded-full border flex items-center justify-center transition-colors pointer-events-auto disabled:opacity-50 touch-manipulation ${isListening ? 'border-black bg-black text-[var(--color-brand-yellow)]' : 'border-black/30 bg-black/5 text-black/40 hover:bg-black/10'}`}
+                    title={window.SpeechRecognition || (window as any).webkitSpeechRecognition ? "Dictate with microphone" : "Voice input requires Chrome/Edge or Speechly (see .env.example)"}
                   >
                     {isListening ? (
                       <div className="flex space-x-1.5 items-center justify-center h-full">
@@ -591,7 +878,10 @@ export default function App() {
                   </button>
                 </>
               )}
-          </div>
+            </motion.div>
+            )}
+          </AnimatePresence>
+          )}
         </motion.div>
       )}
 
@@ -605,37 +895,39 @@ export default function App() {
           animate="center"
           exit="exit"
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-          className="min-h-screen w-full bg-black text-white flex flex-col max-w-md mx-auto relative"
+          className="absolute inset-0 min-h-screen w-full bg-black text-white flex flex-col max-w-md mx-auto overflow-auto"
         >
-          <div className="sticky top-0 z-20 bg-black pt-8 px-8 pb-4">
+          <div className="sticky top-0 z-20 bg-black safe-area-pt-8 px-8 pb-4">
             <div className="w-full h-[1px] bg-transparent"></div>
             <div className={`absolute bottom-0 left-0 right-0 h-24 translate-y-full bg-gradient-to-b from-black to-transparent pointer-events-none transition-opacity duration-300 ${isScrolled ? 'opacity-100' : 'opacity-0'}`}></div>
           </div>
           
-          <div className="w-full px-8 mb-8 flex items-center justify-center overflow-hidden">
+          <div className="w-full px-8 mb-8 flex items-center justify-center">
             <img 
+              key={currentResult.word}
               src={currentResult.image} 
               alt="Scientific diagram" 
-              className="w-full h-auto object-cover mix-blend-screen"
+              className="w-full h-auto object-contain mix-blend-screen"
+              loading="eager"
             />
           </div>
           
-          <div className="flex-1 flex flex-col px-8 pb-32">
+          <div className="flex-1 flex flex-col px-8 pb-44">
             <h1 
-              className="text-5xl md:text-6xl font-serif leading-none mb-4 capitalize" 
+              className="text-[60px] font-serif leading-[0.8] mb-4 capitalize" 
               lang="en"
-              style={{ wordBreak: 'break-word', hyphens: 'auto', WebkitHyphens: 'auto', hyphenateLimitChars: 'auto 3' } as React.CSSProperties}
+              style={{ wordBreak: 'break-word', hyphens: 'auto', WebkitHyphens: 'auto', hyphenateLimitChars: 'auto 6 4' } as React.CSSProperties}
             >
               {currentResult.word.toLowerCase().split('').map((char, i) => (
                 <React.Fragment key={i}>
-                  {i > 0 && i % 3 === 0 ? '\u00AD' : ''}{char}
+                  {i > 0 && i % 6 === 0 ? '\u00AD' : ''}{char}
                 </React.Fragment>
               ))}
             </h1>
             
             <button 
               onClick={handleSpeak}
-              className="flex items-center gap-2 text-white/60 mb-8 font-sans hover:text-white transition-colors w-fit"
+              className="min-h-[44px] flex items-center gap-2 text-white/60 mb-8 font-sans hover:text-white transition-colors w-fit py-2 pr-2 touch-manipulation"
             >
               <Volume2 size={20} strokeWidth={1.5} />
               <span className="text-lg">{currentResult.pronunciation}</span>
@@ -663,17 +955,24 @@ export default function App() {
                 initial={{ opacity: 0, y: 50 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 50 }}
-                className="share-buttons-container fixed bottom-8 left-0 right-0 max-w-md mx-auto px-8 flex justify-between items-end pointer-events-none z-20"
+                className="share-buttons-container fixed bottom-0 left-0 right-0 max-w-md mx-auto px-8 safe-area-pb-0 flex justify-between items-end pointer-events-none z-20"
               >
                 <button 
-                  onClick={handleShare}
-                  className="w-16 h-16 rounded-full border border-white/50 flex items-center justify-center bg-black hover:bg-white/10 transition-colors pointer-events-auto"
+                  onClick={handleDownload}
+                  disabled={!shareReady}
+                  className="min-w-[48px] min-h-[48px] w-16 h-16 rounded-full border border-white/50 flex items-center justify-center bg-black hover:bg-white/10 transition-colors pointer-events-auto touch-manipulation disabled:opacity-50 disabled:hover:bg-black"
+                  title="Download image"
                 >
-                  <Share size={28} strokeWidth={1} />
+                  {shareReady ? <Download size={28} strokeWidth={1} /> : <Loader2 className="animate-spin" size={28} strokeWidth={1} />}
                 </button>
                 <button 
-                  onClick={() => { setSlideDirection('backward'); setConcept(''); setScreen('input'); }} 
-                  className="w-16 h-16 rounded-full border border-white/50 flex items-center justify-center bg-black hover:bg-white/10 transition-colors pointer-events-auto"
+                  onClick={() => {
+                    if (currentResult) setWordHistory(prev => [currentResult, ...prev]);
+                    setSlideDirection('backward');
+                    setConcept('');
+                    setScreen('input');
+                  }} 
+                  className="min-w-[48px] min-h-[48px] w-16 h-16 rounded-full border border-white/50 flex items-center justify-center bg-black hover:bg-white/10 transition-colors pointer-events-auto touch-manipulation"
                 >
                   <RotateCcw size={28} strokeWidth={1} />
                 </button>
@@ -692,12 +991,12 @@ export default function App() {
           animate="center"
           exit="exit"
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-          className="min-h-screen w-full bg-[#FF3B44] text-black flex flex-col max-w-md mx-auto relative px-8 pt-12 pb-12"
+          className="absolute inset-0 min-h-screen w-full bg-[#FF3B44] text-black flex flex-col max-w-md mx-auto px-8 pt-12 pb-12"
         >
           <div className="w-full h-[1px] bg-transparent mb-8"></div>
           
           <div className="flex-1 flex flex-col">
-            <h1 className="text-[66px] font-serif font-normal leading-[0.76] mb-8 tracking-tight">
+            <h1 className="text-[60px] font-serif font-normal leading-[0.8] mb-8 tracking-tight">
               That's 5 free<br/>Wurdles!
             </h1>
             
@@ -709,7 +1008,7 @@ export default function App() {
           <div className="mt-auto pt-12 flex justify-start">
             <button 
               onClick={() => { setSlideDirection('backward'); setScreen('input'); }}
-              className="px-8 py-3 rounded-[32px] border-2 border-black text-2xl font-sans hover:bg-black/5 transition-colors"
+              className="min-h-[48px] px-8 py-3 rounded-[32px] border-2 border-black text-2xl font-sans hover:bg-black/5 transition-colors touch-manipulation"
             >
               Upgrade
             </button>
@@ -717,45 +1016,6 @@ export default function App() {
         </motion.div>
       )}
 
-      {/* Hidden share card */}
-      <div className="fixed top-[-9999px] left-[-9999px]">
-        <div ref={shareCardRef} className="w-[400px] bg-black text-white px-8 pt-8 pb-12 flex flex-col relative">
-          {currentResult && (
-            <>
-              <img 
-                src={currentResult.image} 
-                alt="Scientific diagram" 
-                className="w-full h-auto object-cover mb-12"
-              />
-              
-              <h1 
-                className="text-7xl font-serif leading-none mb-6 capitalize" 
-                style={{ wordBreak: 'break-word', hyphens: 'auto' }}
-              >
-                {currentResult.word.toLowerCase()}
-              </h1>
-              
-              <div className="flex items-center gap-2 text-white/60 mb-8 font-sans w-fit">
-                <Volume2 size={20} strokeWidth={1.5} />
-                <span className="text-lg">{currentResult.pronunciation}</span>
-              </div>
-              
-              <div className="space-y-6">
-                <p className="font-sans text-xl leading-relaxed text-white/90">
-                  {currentResult.definition}
-                </p>
-                
-                <div className="border-t border-white/20 pt-6">
-                  <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-2 font-sans">DISCOVERY</p>
-                  <p className="font-sans text-lg leading-relaxed text-white/70 italic">
-                    {currentResult.discovery}
-                  </p>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
       </AnimatePresence>
     </div>
   );

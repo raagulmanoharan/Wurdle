@@ -9,11 +9,72 @@
   --color-brand-black: #000000;
 }
 
+html {
+  min-height: 100lvh;
+  background-color: #FF3B44; /* Splash red – app starts here; input screen covers with yellow */
+}
+
+/* Override Tailwind height utilities for mobile: use lvh to avoid initial-load bottom padding jump */
+.min-h-screen {
+  min-height: 100lvh;
+}
+.h-screen {
+  height: 100lvh;
+}
+
 body {
   font-family: var(--font-sans);
-  background-color: #f5f5f5;
+  background-color: #FF3B44; /* Splash red – app starts here */
   color: var(--color-brand-black);
   -webkit-font-smoothing: antialiased;
+  min-height: 100lvh;
+  overscroll-behavior: none;
+}
+
+#root {
+  min-height: 100lvh;
+}
+
+/* Safe area insets for notched phones (iPhone X+, etc.) */
+.safe-area-pt-24 {
+  padding-top: calc(6rem + env(safe-area-inset-top, 0px));
+}
+.safe-area-pt-8 {
+  padding-top: calc(2rem + env(safe-area-inset-top, 0px));
+}
+.safe-area-pb-8 {
+  padding-bottom: calc(2rem + env(safe-area-inset-bottom, 0px));
+}
+.safe-area-pb-6 {
+  padding-bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+}
+.safe-area-pb-4 {
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+}
+.safe-area-pb-2 {
+  padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
+}
+.safe-area-pb-0 {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+/* Input buttons: sit lower in full-screen (no browser chrome) */
+.input-buttons-bottom {
+  bottom: -1.5rem;
+}
+
+/* Blinking cursor for placeholder affordance */
+@keyframes cursor-blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+.placeholder-cursor {
+  animation: cursor-blink 1s step-end infinite;
+}
+
+/* Smoother scrolling when typing long paragraphs */
+.input-slide-scroll,
+.input-slide-scroll textarea {
+  scroll-behavior: smooth;
 }
 
 /* Hide all scrollbars globally */

@@ -16,5 +16,6 @@ View your app in AI Studio: https://ai.studio/apps/9fd7cae8-3ed0-4ad9-bb45-6dddd
 1. Install dependencies:
    `npm install`
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
+3. (Optional) For voice input on iOS/Safari, add `VITE_SPEECHLY_APP_ID` — get a free app ID at [Speechly Dashboard](https://api.speechly.com/dashboard/)
+4. Run the app:
    `npm run dev`

@@ -1,0 +1,10 @@
+{
+  "name": "Wurdle",
+  "short_name": "Wurdle",
+  "description": "Forge nonsense words for absurd ideas",
+  "start_url": "/",
+  "display": "fullscreen",
+  "background_color": "#FF3B44",
+  "theme_color": "#F6C927",
+  "orientation": "portrait"
+}
