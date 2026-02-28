@@ -9,6 +9,7 @@ import { Mic, ArrowRight, X, Volume2, VolumeX, Share2, RotateCcw, Key, Loader2, 
 import { generateDaVinciSketch, generateConceptWord } from './services/geminiService';
 import { shareImage } from './shareUtils';
 import { playTypingSound, playRevealSound, playSparkleSound, startScrambleSound } from './audioUtils';
+import { vibrateHapticTyping, vibrateHapticReveal } from './hapticUtils';
 
 declare global {
   interface Window {
@@ -582,6 +583,7 @@ export default function App() {
       if (now - lastTypingSoundRef.current > 50) {
         lastTypingSoundRef.current = now;
         playTypingSound(typingAudioCtxRef, soundEnabled);
+        vibrateHapticTyping();
       }
     }
     setConcept(next);
@@ -692,6 +694,7 @@ export default function App() {
       localStorage.setItem('generationCount', newCount.toString());
       
       playRevealSound(typingAudioCtxRef, soundEnabled);
+      vibrateHapticReveal();
       setScreen('result');
     } catch (err: any) {
       if (cancelledRef.current) return;
