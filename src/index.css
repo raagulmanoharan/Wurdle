@@ -9,21 +9,33 @@
   --color-brand-black: #000000;
 }
 
-/* Responsive viewport: 100svh = visible area when browser UI is shown (no content behind address bar) */
+/* Dialed-style: height 100%, explicit footer offset for browser chrome */
+html, body {
+  height: 100%;
+}
+@media (max-width: 767px) {
+  html, body {
+    height: 100%;
+    min-height: 100dvh;
+  }
+}
 html {
-  min-height: 100vh;
-  min-height: 100svh;
   background-color: #FF3B44;
 }
 
-/* Override Tailwind: viewport-aware heights for true mobile responsiveness */
 .min-h-screen {
-  min-height: 100vh;
-  min-height: 100svh;
+  min-height: 100%;
 }
 .h-screen {
-  height: 100vh;
-  height: 100svh;
+  height: 100%;
+}
+@media (max-width: 767px) {
+  .min-h-screen {
+    min-height: 100dvh;
+  }
+  .h-screen {
+    height: 100dvh;
+  }
 }
 
 body {
@@ -31,14 +43,55 @@ body {
   background-color: #FF3B44;
   color: var(--color-brand-black);
   -webkit-font-smoothing: antialiased;
-  min-height: 100vh;
-  min-height: 100svh;
   overscroll-behavior: none;
 }
 
 #root {
-  min-height: 100vh;
-  min-height: 100svh;
+  min-height: 100%;
+}
+@media (max-width: 767px) {
+  #root {
+    min-height: 100dvh;
+  }
+}
+
+/* Header / Body / Footer layout — dynamically fits viewport */
+.screen-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 100%;
+}
+.screen-header {
+  flex-shrink: 0;
+}
+.screen-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.screen-footer {
+  flex-shrink: 0;
+}
+
+/* Dialed-style: explicit px offset for browser chrome + safe-area for notch */
+.footer-offset {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (max-width: 767px) {
+  .footer-offset {
+    padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px));
+  }
+}
+/* Body padding so content scrolls above fixed footer; larger on mobile for browser bar */
+.body-pad-footer {
+  padding-bottom: calc(2rem + env(safe-area-inset-bottom, 0px));
+}
+@media (max-width: 767px) {
+  .body-pad-footer {
+    padding-bottom: calc(180px + env(safe-area-inset-bottom, 0px));
+  }
 }
 
 /* Safe area insets for notched phones (iPhone X+, etc.) */
@@ -59,11 +112,6 @@ body {
 }
 .safe-area-pb-2 {
   padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
-}
-
-/* Fixed bottom elements: offset from viewport edge for notch/home indicator */
-.safe-area-bottom {
-  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 /* Blinking cursor for placeholder affordance */

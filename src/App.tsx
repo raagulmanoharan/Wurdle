@@ -736,7 +736,7 @@ export default function App() {
   }
 
   return (
-    <div className={`overflow-x-hidden ${screen === 'splash' ? 'overflow-y-hidden' : ''} relative w-full min-h-screen ${isDesktop ? 'bg-white' : screen === 'splash' ? 'bg-[#FF3B44]' : screen === 'result' ? 'bg-black' : screen === 'input' ? 'bg-[var(--color-brand-yellow)]' : 'bg-[var(--color-brand-yellow)]'} ${screen === 'splash' || (screen === 'input' && !isDesktop) ? 'h-screen' : ''}`}>
+    <div className={`${screen === 'input' && !isDesktop ? 'overflow-x-visible' : 'overflow-x-hidden'} ${screen === 'splash' ? 'overflow-y-hidden' : ''} relative w-full min-h-screen ${isDesktop ? 'bg-white' : screen === 'splash' ? 'bg-[#FF3B44]' : screen === 'result' ? 'bg-black' : screen === 'input' ? 'bg-[var(--color-brand-yellow)]' : 'bg-[var(--color-brand-yellow)]'} ${screen === 'splash' || (screen === 'input' && !isDesktop) ? 'h-screen' : ''}`}>
       <div className={isDesktop ? 'flex flex-col min-h-screen' : ''}>
       {isDesktop && (
         <header className="flex-shrink-0 p-8">
@@ -784,8 +784,8 @@ export default function App() {
                   </div>
             ) : (
               <>
-                <div className="flex flex-col max-w-md mx-auto px-8 safe-area-pt-24 safe-area-pb-8 h-screen">
-                  <div className="flex-1 flex flex-col">
+                <div className="screen-layout flex flex-col max-w-md mx-auto px-8 safe-area-pt-24 footer-offset h-screen">
+                  <div className="screen-body flex-1 flex flex-col min-h-0 overflow-y-auto">
                     <h1 className="text-7xl font-serif font-normal leading-none mb-8 tracking-tight text-[var(--color-brand-yellow)]">
                       Wurdle
                     </h1>
@@ -799,7 +799,7 @@ export default function App() {
                       That&apos;s it. That&apos;s the feature.
                     </p>
                   </div>
-                  <div className="mt-auto pt-7 flex flex-col gap-12">
+                  <div className="screen-footer flex-shrink-0 pt-7 flex flex-col gap-12">
                     <button 
                       onClick={() => { setSlideDirection('forward'); setScreen('input'); }}
                       className="min-h-[48px] px-8 py-3 rounded-[32px] border-2 border-black text-2xl font-sans hover:bg-black/5 transition-colors touch-manipulation w-fit"
@@ -827,7 +827,7 @@ export default function App() {
             animate="center"
             exit="exit"
             transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-            className={`${isDesktop ? 'w-full max-w-[400px]' : 'absolute inset-0 min-h-screen w-full'} text-black overflow-hidden ${isDesktop ? '' : 'bg-[var(--color-brand-yellow)] max-w-md mx-auto'}`}
+            className={`${isDesktop ? 'w-full max-w-[400px]' : 'absolute inset-0 min-h-screen w-full'} text-black ${isDesktop ? 'overflow-hidden' : 'overflow-visible'} ${isDesktop ? '' : 'bg-[var(--color-brand-yellow)]'}`}
           >
             {/* Desktop layout */}
             {isDesktop && (
@@ -953,10 +953,10 @@ export default function App() {
               {/* Input slide last */}
               <div 
                 ref={inputSlideScrollRef}
-                className="input-slide-scroll flex-shrink-0 w-full h-screen flex flex-col snap-center overflow-y-auto overflow-x-hidden"
+                className="input-slide-scroll flex-shrink-0 w-full h-screen flex flex-col snap-center overflow-y-auto overflow-x-hidden screen-layout"
                 style={{ WebkitOverflowScrolling: 'touch' }}
               >
-                <div className="flex-1 flex flex-col min-h-0 px-8 safe-area-pt-8 pt-8 pb-6">
+                <div className="screen-body flex-1 flex flex-col min-h-0 px-8 safe-area-pt-8 pt-8 body-pad-footer">
                   <div className="flex-1 flex flex-col min-h-0 relative">
                     {!concept && !isLoading && !isInputFocused && (
                       <div className="w-full text-[60px] font-serif leading-[0.8] text-black/40 pointer-events-none absolute top-0 left-0" style={{ hyphens: 'auto', WebkitHyphens: 'auto', hyphenateLimitChars: 'auto 6 4' }}>
@@ -1003,7 +1003,6 @@ export default function App() {
                     </div>
                   )}
                 </div>
-                <div className="flex-shrink-0 h-[100px]" />
               </div>
             </div>
           
@@ -1018,7 +1017,7 @@ export default function App() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 50 }}
               transition={{ duration: 0.3 }}
-              className="fixed bottom-0 left-0 right-0 max-w-md mx-auto px-8 safe-area-bottom flex justify-between items-end pointer-events-none z-20"
+              className="fixed bottom-0 left-0 right-0 max-w-md mx-auto px-8 footer-offset flex justify-between items-end pointer-events-none z-20"
             >
               {concept ? (
                 <>
@@ -1085,7 +1084,7 @@ export default function App() {
           animate="center"
           exit="exit"
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-          className={`${isDesktop ? 'w-full max-w-[400px] max-h-[70vh]' : 'absolute inset-0 min-h-screen w-full'} text-white flex flex-col ${isDesktop ? 'bg-black rounded-3xl shadow-lg overflow-y-auto' : 'overflow-auto bg-black max-w-md mx-auto'}`}
+          className={`${isDesktop ? 'w-full max-w-[400px] max-h-[70vh]' : 'absolute inset-0 min-h-screen w-full'} text-white flex flex-col ${isDesktop ? 'bg-black rounded-3xl shadow-lg overflow-y-auto' : 'overflow-auto bg-black'}`}
         >
           {!isDesktop && (
           <div className="sticky top-0 z-20 safe-area-pt-8 px-8 pb-4 bg-black">
@@ -1105,7 +1104,7 @@ export default function App() {
             />
           </div>
           
-          <div className="flex-1 flex flex-col px-8 pb-44">
+          <div className="flex-1 flex flex-col px-8 body-pad-footer">
             <h1 
               className="text-[60px] font-serif leading-[0.8] mb-4 capitalize" 
               lang="en"
@@ -1149,7 +1148,7 @@ export default function App() {
                 initial={{ opacity: 0, y: 50 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 50 }}
-                className={`share-buttons-container fixed bottom-0 px-8 safe-area-bottom flex justify-between items-end pointer-events-none z-20 ${isDesktop ? 'left-1/2 -translate-x-1/2 w-full max-w-[400px]' : 'left-0 right-0 mx-auto max-w-md'}`}
+                className={`share-buttons-container fixed bottom-0 px-8 footer-offset flex justify-between items-end pointer-events-none z-20 ${isDesktop ? 'left-1/2 -translate-x-1/2 w-full max-w-[400px]' : 'left-0 right-0 mx-auto max-w-md'}`}
               >
                 <div className="flex flex-col items-center gap-1">
                   <button 
@@ -1195,7 +1194,7 @@ export default function App() {
           animate="center"
           exit="exit"
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-          className={`absolute inset-0 min-h-screen w-full text-black flex flex-col max-w-md mx-auto px-8 pt-12 safe-area-pb-8 ${isDesktop ? 'bg-white' : 'bg-[#FF3B44]'}`}
+          className={`screen-layout absolute inset-0 min-h-screen w-full text-black flex flex-col ${isDesktop ? 'max-w-md mx-auto' : ''} px-8 pt-12 footer-offset ${isDesktop ? 'bg-white' : 'bg-[#FF3B44]'}`}
         >
           <div className="w-full h-[1px] bg-transparent mb-8"></div>
           
