@@ -25,6 +25,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-speech-recognition": "^4.0.1",
+    "tone": "^15.1.22",
     "vite": "^6.2.0"
   },
   "devDependencies": {

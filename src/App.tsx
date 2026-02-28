@@ -5,9 +5,10 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mic, ArrowRight, X, Volume2, Download, RotateCcw, Key, Loader2, Sparkles } from 'lucide-react';
+import { Mic, ArrowRight, X, Volume2, VolumeX, Share2, RotateCcw, Key, Loader2, Sparkles } from 'lucide-react';
 import { generateDaVinciSketch, generateConceptWord } from './services/geminiService';
-import { playTypingSound, playRevealSound, startScrambleSound } from './audioUtils';
+import { shareImage } from './shareUtils';
+import { playTypingSound, playRevealSound, playSparkleSound, startScrambleSound } from './audioUtils';
 
 declare global {
   interface Window {
@@ -121,8 +122,20 @@ export default function App() {
   const dot1Ref = useRef<HTMLDivElement>(null);
   const dot2Ref = useRef<HTMLDivElement>(null);
   const dot3Ref = useRef<HTMLDivElement>(null);
-  const shareDataRef = useRef<{ file: File; text: string } | null>(null);
+  const shareDataRef = useRef<{ file: File; text: string; dataUrl?: string; hostedUrl?: string } | null>(null);
   const [shareReady, setShareReady] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [showAddToHomeDrawer, setShowAddToHomeDrawer] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)');
+    const handler = () => setIsDesktop(mq.matches);
+    handler();
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
 
   useEffect(() => {
     if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
@@ -132,7 +145,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const color = screen === 'splash' ? '#FF3B44' : screen === 'input' ? '#F6C927' : '#000000';
+    const color = isDesktop ? '#ffffff' : screen === 'splash' ? '#FF3B44' : screen === 'input' ? '#F6C927' : '#000000';
     document.documentElement.style.backgroundColor = color;
     document.body.style.backgroundColor = color;
     if (screen === 'splash') {
@@ -148,7 +161,7 @@ export default function App() {
       document.documentElement.style.overflow = '';
       document.body.style.overflow = '';
     };
-  }, [screen]);
+  }, [screen, isDesktop]);
 
   useEffect(() => {
     const stored = localStorage.getItem('generationCount');
@@ -370,7 +383,35 @@ export default function App() {
         if (!blob || cancelled) return;
 
         const file = new File([blob], `${currentResult.word}.png`, { type: 'image/png' });
-        shareDataRef.current = { file, text: SHARE_MESSAGE };
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(r.result as string);
+          r.onerror = reject;
+          r.readAsDataURL(blob);
+        });
+        let hostedUrl: string | undefined;
+        const imgbbKey = import.meta.env.VITE_IMGBB_API_KEY;
+        if (imgbbKey && !cancelled) {
+          try {
+            const base64 = dataUrl.split(',')[1];
+            const form = new FormData();
+            form.append('image', base64);
+            const uploadUrl = import.meta.env.DEV
+              ? `/api/imgbb/1/upload?key=${imgbbKey}`
+              : `https://api.imgbb.com/1/upload?key=${imgbbKey}`;
+            const res = await fetch(uploadUrl, {
+              method: 'POST',
+              body: form,
+            });
+            const json = await res.json();
+            if (json.data?.url) hostedUrl = json.data.url;
+            else if (json.error) console.warn('ImgBB upload failed:', json.error.message);
+          } catch (e) {
+            console.warn('ImgBB upload error:', e);
+          }
+        }
+        if (cancelled) return;
+        shareDataRef.current = { file, text: SHARE_MESSAGE, dataUrl, hostedUrl };
         setShareReady(true);
       } catch (e) {
         console.error("Share prep failed", e);
@@ -434,7 +475,7 @@ export default function App() {
       setDisplayConcept(result);
     };
 
-    scrambleSoundRef.current = startScrambleSound(typingAudioCtxRef, onTick);
+    scrambleSoundRef.current = startScrambleSound(typingAudioCtxRef, onTick, soundEnabled);
 
     return () => {
       if (scrambleSoundRef.current) {
@@ -442,7 +483,7 @@ export default function App() {
         scrambleSoundRef.current = null;
       }
     };
-  }, [isLoading, concept]);
+  }, [isLoading, concept, soundEnabled]);
 
   useEffect(() => {
     const checkKey = async () => {
@@ -516,19 +557,22 @@ export default function App() {
     window.speechSynthesis.speak(utterance);
   };
 
-  const handleDownload = () => {
+  const handleShare = () => {
     if (!currentResult) return;
     const data = shareDataRef.current;
-    if (!data) {
-      console.warn("Download not ready yet");
-      return;
-    }
-    const url = URL.createObjectURL(data.file);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${currentResult.word}.png`;
-    a.click();
-    URL.revokeObjectURL(url);
+    if (!data) return;
+
+    shareImage(data.file, {
+      title: currentResult.word,
+      text: data.text,
+      filename: `${currentResult.word}.png`,
+      hostedUrl: data.hostedUrl,
+      dataUrl: data.dataUrl,
+      onLinkCopied: () => {
+        setShareCopied(true);
+        setTimeout(() => setShareCopied(false), 2500);
+      },
+    });
   };
 
   const handleConceptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -537,7 +581,7 @@ export default function App() {
       const now = Date.now();
       if (now - lastTypingSoundRef.current > 50) {
         lastTypingSoundRef.current = now;
-        playTypingSound(typingAudioCtxRef);
+        playTypingSound(typingAudioCtxRef, soundEnabled);
       }
     }
     setConcept(next);
@@ -615,6 +659,11 @@ export default function App() {
 
   const handleGenerate = async () => {
     if (!canGenerate) return;
+    if (generationCount >= 5) {
+      setSlideDirection('forward');
+      setScreen('upgrade');
+      return;
+    }
 
     setSlideDirection('forward');
     setIsLoading(true);
@@ -642,7 +691,7 @@ export default function App() {
       setGenerationCount(newCount);
       localStorage.setItem('generationCount', newCount.toString());
       
-      playRevealSound(typingAudioCtxRef);
+      playRevealSound(typingAudioCtxRef, soundEnabled);
       setScreen('result');
     } catch (err: any) {
       if (cancelledRef.current) return;
@@ -684,7 +733,14 @@ export default function App() {
   }
 
   return (
-    <div className={`overflow-x-hidden ${screen === 'splash' ? 'overflow-y-hidden' : ''} relative w-full min-h-screen ${screen === 'splash' ? 'bg-[#FF3B44]' : screen === 'result' ? 'bg-black' : 'bg-[var(--color-brand-yellow)]'} ${screen === 'splash' || screen === 'input' ? 'h-screen' : ''}`}>
+    <div className={`overflow-x-hidden ${screen === 'splash' ? 'overflow-y-hidden' : ''} relative w-full min-h-screen ${isDesktop ? 'bg-white' : screen === 'splash' ? 'bg-[#FF3B44]' : screen === 'result' ? 'bg-black' : screen === 'input' ? 'bg-[var(--color-brand-yellow)]' : 'bg-[var(--color-brand-yellow)]'} ${screen === 'splash' || (screen === 'input' && !isDesktop) ? 'h-screen' : ''}`}>
+      <div className={isDesktop ? 'flex flex-col min-h-screen' : ''}>
+      {isDesktop && (
+        <header className="flex-shrink-0 p-8">
+          <h1 className="text-2xl font-serif font-normal text-black">Wurdle</h1>
+        </header>
+      )}
+      <div className={isDesktop ? 'flex-1 flex items-center justify-center px-8 py-8 min-h-0 overflow-hidden' : 'absolute inset-0'}>
       <AnimatePresence mode="sync" custom={slideDirection} initial={false}>
         {screen === 'splash' && (
           <motion.div 
@@ -695,29 +751,67 @@ export default function App() {
             animate="center"
             exit="exit"
             transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-            className="absolute inset-0 h-screen w-full bg-[#FF3B44] text-black flex flex-col max-w-md mx-auto px-8 safe-area-pt-24 pb-12 overflow-hidden"
+            className={`${isDesktop ? 'w-full max-w-[400px]' : 'absolute inset-0 min-h-screen w-full'} overflow-hidden ${isDesktop ? '' : 'bg-[#FF3B44]'}`}
           >
-            <div className="flex-1 flex flex-col">
-              <h1 className="text-7xl font-serif font-normal leading-none mb-6 tracking-tight text-[var(--color-brand-yellow)]">
-                Wurdle
-              </h1>
-              
-              <p className="font-sans text-[28px] leading-[1.15] font-normal">
-                Forge nonsense words<br/>for absurd ideas.
-              </p>
-            </div>
-            
-            <div className="mt-auto pt-12 flex justify-start">
-              <button 
-                onClick={() => {
-                  setSlideDirection('forward');
-                  setScreen('input');
-                }}
-                className="min-h-[48px] px-8 py-3 rounded-[32px] border-2 border-black text-2xl font-sans hover:bg-black/5 transition-colors touch-manipulation"
-              >
-                Let's go!
-              </button>
-            </div>
+            {isDesktop ? (
+              <div className="w-full max-w-[400px] min-h-[680px] bg-[#FF3B44] rounded-3xl p-8 flex flex-col shadow-lg">
+                    <h1 className="text-4xl font-serif font-normal leading-none mb-8 tracking-tight text-[var(--color-brand-yellow)]">
+                      Wurdle
+                    </h1>
+                    <p className="font-sans text-lg leading-[1.4] font-normal text-black mb-4">
+                      Not everything needs to be useful.
+                    </p>
+                    <p className="font-sans text-lg leading-[1.4] font-normal text-black mb-4">
+                      This app exists to name weird ideas and draw pretend science about them.
+                    </p>
+                    <p className="font-sans text-lg leading-[1.4] font-normal text-black mb-8">
+                      That&apos;s it. That&apos;s the feature.
+                    </p>
+                    <div className="mt-auto flex flex-col gap-8">
+                      <button 
+                        onClick={() => { setSlideDirection('forward'); setScreen('input'); }}
+                        className="min-h-[48px] px-8 py-3 rounded-[32px] border-2 border-black text-black text-xl font-sans hover:bg-black/5 transition-colors touch-manipulation w-fit"
+                      >
+                        Let&apos;s go!
+                      </button>
+                      <p className="font-sans text-sm text-black/80">
+                        In a world obsessed with utility, this is a small rebellion.
+                      </p>
+                    </div>
+                  </div>
+            ) : (
+              <>
+                <div className="flex flex-col max-w-md mx-auto px-8 safe-area-pt-24 pb-12 h-screen">
+                  <div className="flex-1 flex flex-col">
+                    <h1 className="text-7xl font-serif font-normal leading-none mb-8 tracking-tight text-[var(--color-brand-yellow)]">
+                      Wurdle
+                    </h1>
+                    <p className="font-sans text-[22px] md:text-[26px] leading-[1.4] font-normal text-black">
+                      Not everything needs to be useful.
+                    </p>
+                    <p className="font-sans text-[22px] md:text-[26px] leading-[1.4] font-normal text-black">
+                      This app exists to name weird ideas and draw pretend science about them.
+                    </p>
+                    <p className="font-sans text-[22px] md:text-[26px] leading-[1.4] font-normal text-black">
+                      That&apos;s it. That&apos;s the feature.
+                    </p>
+                  </div>
+                  <div className="mt-auto pt-7 flex flex-col gap-12">
+                    <button 
+                      onClick={() => { setSlideDirection('forward'); setScreen('input'); }}
+                      className="min-h-[48px] px-8 py-3 rounded-[32px] border-2 border-black text-2xl font-sans hover:bg-black/5 transition-colors touch-manipulation w-fit"
+                    >
+                      Let&apos;s go!
+                    </button>
+                    <div>
+                      <p className="font-sans text-sm text-black/90">
+                        In a world obsessed with utility, this is a small rebellion.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
           </motion.div>
         )}
 
@@ -730,8 +824,101 @@ export default function App() {
             animate="center"
             exit="exit"
             transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-            className="absolute inset-0 min-h-screen w-full bg-[var(--color-brand-yellow)] max-w-md mx-auto text-black overflow-hidden"
+            className={`${isDesktop ? 'w-full max-w-[400px]' : 'absolute inset-0 min-h-screen w-full'} text-black overflow-hidden ${isDesktop ? '' : 'bg-[var(--color-brand-yellow)] max-w-md mx-auto'}`}
           >
+            {/* Desktop layout */}
+            {isDesktop && (
+                  <div className="w-full max-w-[400px] min-h-[680px] bg-[var(--color-brand-yellow)] rounded-3xl p-8 shadow-lg">
+                    <div className="relative min-h-[280px]">
+                      {!concept && !isLoading && !isInputFocused && (
+                        <div className="absolute inset-0 text-[40px] md:text-[48px] font-serif leading-[1.1] text-black/40 pointer-events-none" style={{ hyphens: 'auto', WebkitHyphens: 'auto' }}>
+                          Describe an idea…<br />but make it weird
+                        </div>
+                      )}
+                      <textarea
+                        ref={textareaRef}
+                        value={isLoading ? displayConcept : concept}
+                        onChange={handleConceptChange}
+                        onFocus={() => setIsInputFocused(true)}
+                        onBlur={() => setIsInputFocused(false)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && canGenerate) { e.preventDefault(); handleGenerate(); } }}
+                        lang="en"
+                        placeholder=""
+                        className={`w-full bg-transparent text-[40px] md:text-[48px] font-serif leading-[1.1] focus:outline-none resize-none min-h-[180px] ${isLoading ? 'opacity-50' : ''}`}
+                        style={{ hyphens: 'auto', WebkitHyphens: 'auto' } as React.CSSProperties}
+                        disabled={isLoading}
+                      />
+                    </div>
+                    {concept && !isLoading && conceptWordCount < 3 && (
+                      <p className="mt-4 font-sans text-black/50 text-base">Type at least 3 words to continue</p>
+                    )}
+                    {!concept && !isLoading && !isInputFocused && (
+                      <AnimatePresence mode="wait">
+                        <motion.p
+                          key={exampleIndex}
+                          initial={{ opacity: 0, y: 4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -4 }}
+                          transition={{ duration: 0.4 }}
+                          onClick={() => setConcept(ABSURD_EXAMPLES[exampleIndex])}
+                          className="mt-6 font-serif text-black/50 italic text-lg leading-snug cursor-pointer hover:text-black/70 transition-colors"
+                        >
+                          eg. {ABSURD_EXAMPLES[exampleIndex]}
+                        </motion.p>
+                      </AnimatePresence>
+                    )}
+                    <div className="mt-10 flex justify-center gap-4">
+                      {concept ? (
+                        <>
+                          <button
+                            onClick={() => (isLoading ? handleCancel() : setConcept(''))}
+                            className="w-14 h-14 rounded-full border-2 border-black flex items-center justify-center hover:bg-black/5 transition-colors touch-manipulation"
+                          >
+                            <X size={24} strokeWidth={1} />
+                          </button>
+                          <button
+                            onClick={handleGenerate}
+                            disabled={!canGenerate}
+                            className="w-14 h-14 rounded-full border-2 border-black flex items-center justify-center hover:bg-black/5 disabled:opacity-50 transition-colors touch-manipulation bg-black text-[var(--color-brand-yellow)] disabled:bg-transparent disabled:text-black"
+                          >
+                            {isLoading ? <Loader2 className="animate-spin" size={24} strokeWidth={1} /> : <ArrowRight size={24} strokeWidth={1} />}
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => {
+                              playSparkleSound(typingAudioCtxRef, soundEnabled);
+                              setConcept(RANDOM_CONCEPTS[Math.floor(Math.random() * RANDOM_CONCEPTS.length)]);
+                            }}
+                            className="w-14 h-14 rounded-full border-2 border-black flex items-center justify-center hover:bg-black/5 transition-colors touch-manipulation"
+                          >
+                            <Sparkles size={24} strokeWidth={1} />
+                          </button>
+                          <button
+                            onClick={toggleListening}
+                            disabled={!(window.SpeechRecognition || (window as any).webkitSpeechRecognition)}
+                            className={`w-14 h-14 rounded-full border-2 flex items-center justify-center transition-colors touch-manipulation disabled:opacity-50 ${isListening ? 'border-black bg-black text-[var(--color-brand-yellow)]' : 'border-black/30 hover:bg-black/5'}`}
+                            title="Dictate with microphone"
+                          >
+                            {isListening ? (
+                              <div className="flex gap-1 items-center">
+                                <div ref={dot1Ref} className="w-1.5 h-1.5 bg-[var(--color-brand-yellow)] rounded-full" />
+                                <div ref={dot2Ref} className="w-1.5 h-1.5 bg-[var(--color-brand-yellow)] rounded-full" />
+                                <div ref={dot3Ref} className="w-1.5 h-1.5 bg-[var(--color-brand-yellow)] rounded-full" />
+                              </div>
+                            ) : (
+                              <Mic size={24} strokeWidth={1} />
+                            )}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+            )}
+            {/* Mobile layout */}
+            {!isDesktop && (
+            <>
             <div
               ref={inputCardsScrollRef}
               className="flex h-screen w-full overflow-x-auto overflow-y-hidden snap-x snap-mandatory"
@@ -778,10 +965,7 @@ export default function App() {
                       ref={textareaRef}
                       value={isLoading ? displayConcept : concept}
                       onChange={handleConceptChange}
-                      onFocus={() => {
-                        setIsInputFocused(true);
-                        setTimeout(() => textareaRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }), 400);
-                      }}
+                      onFocus={() => setIsInputFocused(true)}
                       onBlur={() => setIsInputFocused(false)}
                       lang="en"
                       inputMode="text"
@@ -798,7 +982,7 @@ export default function App() {
                       Type at least 3 words to continue
                     </p>
                   )}
-                  {!concept && !isLoading && (
+                  {!concept && !isLoading && !isInputFocused && (
                     <div className="flex-shrink-0 mt-4 min-h-[80px]">
                       <AnimatePresence mode="wait">
                         <motion.p
@@ -853,6 +1037,7 @@ export default function App() {
                 <>
                   <button 
                     onClick={() => {
+                      playSparkleSound(typingAudioCtxRef, soundEnabled);
                       const randomConcept = RANDOM_CONCEPTS[Math.floor(Math.random() * RANDOM_CONCEPTS.length)];
                       setConcept(randomConcept);
                     }} 
@@ -882,6 +1067,8 @@ export default function App() {
             )}
           </AnimatePresence>
           )}
+            </>
+            )}
         </motion.div>
       )}
 
@@ -895,14 +1082,17 @@ export default function App() {
           animate="center"
           exit="exit"
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-          className="absolute inset-0 min-h-screen w-full bg-black text-white flex flex-col max-w-md mx-auto overflow-auto"
+          className={`${isDesktop ? 'w-full max-w-[400px] max-h-[70vh]' : 'absolute inset-0 min-h-screen w-full'} text-white flex flex-col ${isDesktop ? 'bg-black rounded-3xl shadow-lg overflow-y-auto' : 'overflow-auto bg-black max-w-md mx-auto'}`}
         >
-          <div className="sticky top-0 z-20 bg-black safe-area-pt-8 px-8 pb-4">
+          {!isDesktop && (
+          <div className="sticky top-0 z-20 safe-area-pt-8 px-8 pb-4 bg-black">
             <div className="w-full h-[1px] bg-transparent"></div>
             <div className={`absolute bottom-0 left-0 right-0 h-24 translate-y-full bg-gradient-to-b from-black to-transparent pointer-events-none transition-opacity duration-300 ${isScrolled ? 'opacity-100' : 'opacity-0'}`}></div>
           </div>
+          )}
           
-          <div className="w-full px-8 mb-8 flex items-center justify-center">
+          <div className="flex-1 flex flex-col">
+          <div className={`w-full mb-8 flex items-center justify-center ${isDesktop ? 'px-8' : 'px-8'}`}>
             <img 
               key={currentResult.word}
               src={currentResult.image} 
@@ -946,8 +1136,9 @@ export default function App() {
               </div>
             </div>
           </div>
+          </div>
 
-          <div className="fixed bottom-0 left-0 right-0 h-40 bg-gradient-to-t from-black via-black/80 to-transparent pointer-events-none z-10"></div>
+          <div className={`fixed bottom-0 h-40 bg-gradient-to-t from-black via-black/80 to-transparent pointer-events-none z-10 ${isDesktop ? 'left-1/2 -translate-x-1/2 w-full max-w-[400px]' : 'left-0 right-0'}`}></div>
 
           <AnimatePresence>
             {isScrolledToBottom && (
@@ -955,22 +1146,32 @@ export default function App() {
                 initial={{ opacity: 0, y: 50 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 50 }}
-                className="share-buttons-container fixed bottom-0 left-0 right-0 max-w-md mx-auto px-8 safe-area-pb-0 flex justify-between items-end pointer-events-none z-20"
+                className={`share-buttons-container fixed bottom-0 px-8 safe-area-pb-0 flex justify-between items-end pointer-events-none z-20 ${isDesktop ? 'left-1/2 -translate-x-1/2 w-full max-w-[400px]' : 'left-0 right-0 mx-auto max-w-md'}`}
               >
-                <button 
-                  onClick={handleDownload}
-                  disabled={!shareReady}
-                  className="min-w-[48px] min-h-[48px] w-16 h-16 rounded-full border border-white/50 flex items-center justify-center bg-black hover:bg-white/10 transition-colors pointer-events-auto touch-manipulation disabled:opacity-50 disabled:hover:bg-black"
-                  title="Download image"
-                >
-                  {shareReady ? <Download size={28} strokeWidth={1} /> : <Loader2 className="animate-spin" size={28} strokeWidth={1} />}
-                </button>
+                <div className="flex flex-col items-center gap-1">
+                  <button 
+                    onClick={handleShare}
+                    disabled={!shareReady}
+                    className="min-w-[48px] min-h-[48px] w-16 h-16 rounded-full border border-white/50 flex items-center justify-center bg-black hover:bg-white/10 transition-colors pointer-events-auto touch-manipulation disabled:opacity-50 disabled:hover:bg-black"
+                    title="Share image"
+                  >
+                    {shareReady ? <Share2 size={28} strokeWidth={1} /> : <Loader2 className="animate-spin" size={28} strokeWidth={1} />}
+                  </button>
+                  {shareCopied && (
+                    <span className="text-xs text-white/80">Link copied!</span>
+                  )}
+                </div>
                 <button 
                   onClick={() => {
                     if (currentResult) setWordHistory(prev => [currentResult, ...prev]);
                     setSlideDirection('backward');
                     setConcept('');
-                    setScreen('input');
+                    setScreen(generationCount >= 5 ? 'upgrade' : 'input');
+                    const standalone = (window.navigator as any).standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+                    const mobileSafari = /iP(hone|ad|od)/.test(navigator.userAgent);
+                    if (generationCount >= 1 && generationCount < 5 && !standalone && mobileSafari && !localStorage.getItem('addToHomeDrawerShown')) {
+                      setShowAddToHomeDrawer(true);
+                    }
                   }} 
                   className="min-w-[48px] min-h-[48px] w-16 h-16 rounded-full border border-white/50 flex items-center justify-center bg-black hover:bg-white/10 transition-colors pointer-events-auto touch-manipulation"
                 >
@@ -991,7 +1192,7 @@ export default function App() {
           animate="center"
           exit="exit"
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-          className="absolute inset-0 min-h-screen w-full bg-[#FF3B44] text-black flex flex-col max-w-md mx-auto px-8 pt-12 pb-12"
+          className={`absolute inset-0 min-h-screen w-full text-black flex flex-col max-w-md mx-auto px-8 pt-12 pb-12 ${isDesktop ? 'bg-white' : 'bg-[#FF3B44]'}`}
         >
           <div className="w-full h-[1px] bg-transparent mb-8"></div>
           
@@ -1016,6 +1217,93 @@ export default function App() {
         </motion.div>
       )}
 
+      </AnimatePresence>
+      </div>
+      {isDesktop && (
+        <footer className="flex-shrink-0 p-8 flex justify-between items-end">
+          <p className="text-sm font-sans text-black/70 max-w-md leading-relaxed">
+            Not everything needs to be useful.<br />
+            This app exists to name weird ideas and draw pretend science about them.<br />
+            That&apos;s it. That&apos;s the feature.
+          </p>
+          <button
+            onClick={() => setSoundEnabled(s => !s)}
+            className="p-2 text-black/40 hover:text-black/70 transition-colors"
+            title={soundEnabled ? 'Mute sounds' : 'Unmute sounds'}
+          >
+            {soundEnabled ? <Volume2 size={20} strokeWidth={1.5} /> : <VolumeX size={20} strokeWidth={1.5} />}
+          </button>
+        </footer>
+      )}
+      </div>
+
+      <AnimatePresence>
+        {showAddToHomeDrawer && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 bg-black/40 z-40"
+              onClick={() => {
+                setShowAddToHomeDrawer(false);
+                localStorage.setItem('addToHomeDrawerShown', '1');
+              }}
+            />
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="fixed bottom-0 left-0 right-0 h-[60%] max-h-[500px] bg-white rounded-t-[24px] z-50 shadow-2xl flex flex-col overflow-hidden"
+            >
+              <div className="flex-shrink-0 flex justify-end p-4">
+                <button
+                  onClick={() => {
+                    setShowAddToHomeDrawer(false);
+                    localStorage.setItem('addToHomeDrawerShown', '1');
+                  }}
+                  className="p-2 -m-2 text-black/50 hover:text-black transition-colors touch-manipulation"
+                  aria-label="Close"
+                >
+                  <X size={24} strokeWidth={1.5} />
+                </button>
+              </div>
+              <div className="flex-1 flex flex-col px-8 pb-8 safe-area-pb-8 overflow-y-auto">
+                <h2 className="text-2xl font-serif font-normal text-black mb-3">
+                  Like Wurdle?
+                </h2>
+                <p className="font-sans text-lg text-black/80 leading-relaxed mb-6">
+                  Pin it to your home screen for quick access — no browser bar, just the app.
+                </p>
+                {typeof navigator.share === 'function' ? (
+                  <button
+                    onClick={() => {
+                      const url = window.location.origin + window.location.pathname;
+                      navigator.share({ url, title: 'Wurdle', text: 'Forge nonsense words for absurd ideas' }).catch(() => {});
+                      setShowAddToHomeDrawer(false);
+                      localStorage.setItem('addToHomeDrawerShown', '1');
+                    }}
+                    className="min-h-[48px] px-8 py-3 rounded-[32px] bg-black text-white text-lg font-sans hover:bg-black/90 transition-colors touch-manipulation w-full flex items-center justify-center gap-2 mb-4"
+                  >
+                    <Share2 size={20} strokeWidth={1.5} />
+                    Open Share Menu
+                  </button>
+                ) : null}
+                <div className="bg-black/5 rounded-2xl p-5 font-sans text-base text-black/90 leading-relaxed">
+                  <p className="font-medium text-black mb-2">How to add:</p>
+                  <ol className="list-decimal list-inside space-y-2">
+                    <li>Tap the <strong>3 dots menu</strong> (⋯) in the browser</li>
+                    <li>Tap <strong>Share</strong></li>
+                    <li>Tap <strong>View more</strong></li>
+                    <li>Tap <strong>Add to Home Screen</strong></li>
+                  </ol>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
       </AnimatePresence>
     </div>
   );

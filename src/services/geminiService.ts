@@ -2,7 +2,17 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 export async function generateConceptWord(concept: string): Promise<{word: string, pronunciation: string, definition: string, discovery: string}> {
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-  const prompt = `The user wants a made-up scientific word for the following concept: "${concept}". Create a completely new, plausible-sounding scientific word (e.g., using Latin/Greek roots). Also provide a short, dynamic, and utterly absurd fictitious paragraph about where, when, and by whom this concept was discovered (e.g., by a time-traveling barista in a parallel dimension, or during a freak accident involving a toaster and a quantum accelerator). Make it sound like a serious historical account of a ridiculous event. IMPORTANT: Absolutely NO obscenity, profanity, or inappropriate language. Keep it family-friendly and safe for work.`;
+  const prompt = `The user wants a made-up scientific word for the following concept: "${concept}". 
+
+Create a plausible-sounding scientific word using familiar Latin/Greek roots (e.g., -ology, -ism, -phobia, thermo-, psycho-, etc.). Keep it grounded and close to reality:
+- Use roots that sound like real scientific terms (think psychology, thermodynamics, photosynthesis)
+- Prefer shorter words (2-4 syllables) that feel pronounceable and recognizable
+- Avoid alien, convoluted, or overly exotic constructions
+- The word should feel like it could plausibly exist in a textbook
+
+Also provide a short, dynamic, and utterly absurd fictitious paragraph about where, when, and by whom this concept was discovered. Make it sound like a serious historical account of a ridiculous event.
+
+IMPORTANT: Absolutely NO obscenity, profanity, or inappropriate language. Keep it family-friendly and safe for work.`;
   
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",

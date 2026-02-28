@@ -2,6 +2,7 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import {createSpeechlySpeechRecognition} from '@speechly/speech-recognition-polyfill';
 import App from './App.tsx';
+import RevealSoundTest from './RevealSoundTest.tsx';
 import './index.css';
 
 // Apply Speechly polyfill when native Speech Recognition is unavailable (e.g. iOS Safari, Firefox).
@@ -14,8 +15,10 @@ if (!window.SpeechRecognition && !(window as any).webkitSpeechRecognition && app
   }
 }
 
+const isSoundTest = window.location.pathname === '/reveal-sound-test';
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    {isSoundTest ? <RevealSoundTest /> : <App />}
   </StrictMode>,
 );
