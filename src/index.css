@@ -57,6 +57,15 @@ body {
 .safe-area-pb-0 {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
+/* CTA buttons: extra bottom padding on mobile so they sit above the address bar */
+.safe-area-pb-cta {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (max-width: 767px) {
+  .safe-area-pb-cta {
+    padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+  }
+}
 /* Input buttons: sit lower in full-screen (no browser chrome) */
 .input-buttons-bottom {
   bottom: -1.5rem;

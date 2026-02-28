@@ -1018,7 +1018,7 @@ export default function App() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 50 }}
               transition={{ duration: 0.3 }}
-              className="fixed bottom-0 left-0 right-0 max-w-md mx-auto px-8 safe-area-pb-0 flex justify-between items-end pointer-events-none z-20"
+              className="fixed bottom-0 left-0 right-0 max-w-md mx-auto px-8 safe-area-pb-cta flex justify-between items-end pointer-events-none z-20"
             >
               {concept ? (
                 <>
@@ -1149,7 +1149,7 @@ export default function App() {
                 initial={{ opacity: 0, y: 50 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 50 }}
-                className={`share-buttons-container fixed bottom-0 px-8 safe-area-pb-0 flex justify-between items-end pointer-events-none z-20 ${isDesktop ? 'left-1/2 -translate-x-1/2 w-full max-w-[400px]' : 'left-0 right-0 mx-auto max-w-md'}`}
+                className={`share-buttons-container fixed bottom-0 px-8 safe-area-pb-cta flex justify-between items-end pointer-events-none z-20 ${isDesktop ? 'left-1/2 -translate-x-1/2 w-full max-w-[400px]' : 'left-0 right-0 mx-auto max-w-md'}`}
               >
                 <div className="flex flex-col items-center gap-1">
                   <button 
