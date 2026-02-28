@@ -9,30 +9,36 @@
   --color-brand-black: #000000;
 }
 
+/* Responsive viewport: 100svh = visible area when browser UI is shown (no content behind address bar) */
 html {
-  min-height: 100lvh;
-  background-color: #FF3B44; /* Splash red – app starts here; input screen covers with yellow */
+  min-height: 100vh;
+  min-height: 100svh;
+  background-color: #FF3B44;
 }
 
-/* Override Tailwind height utilities for mobile: use lvh to avoid initial-load bottom padding jump */
+/* Override Tailwind: viewport-aware heights for true mobile responsiveness */
 .min-h-screen {
-  min-height: 100lvh;
+  min-height: 100vh;
+  min-height: 100svh;
 }
 .h-screen {
-  height: 100lvh;
+  height: 100vh;
+  height: 100svh;
 }
 
 body {
   font-family: var(--font-sans);
-  background-color: #FF3B44; /* Splash red – app starts here */
+  background-color: #FF3B44;
   color: var(--color-brand-black);
   -webkit-font-smoothing: antialiased;
-  min-height: 100lvh;
+  min-height: 100vh;
+  min-height: 100svh;
   overscroll-behavior: none;
 }
 
 #root {
-  min-height: 100lvh;
+  min-height: 100vh;
+  min-height: 100svh;
 }
 
 /* Safe area insets for notched phones (iPhone X+, etc.) */
@@ -54,21 +60,10 @@ body {
 .safe-area-pb-2 {
   padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
 }
-.safe-area-pb-0 {
+
+/* Fixed bottom elements: offset from viewport edge for notch/home indicator */
+.safe-area-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0px);
-}
-/* CTA buttons: extra bottom padding on mobile so they sit above the address bar */
-.safe-area-pb-cta {
-  padding-bottom: env(safe-area-inset-bottom, 0px);
-}
-@media (max-width: 767px) {
-  .safe-area-pb-cta {
-    padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
-  }
-}
-/* Input buttons: sit lower in full-screen (no browser chrome) */
-.input-buttons-bottom {
-  bottom: -1.5rem;
 }
 
 /* Blinking cursor for placeholder affordance */
